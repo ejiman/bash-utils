@@ -1,0 +1,12 @@
+/*
+
+!/.github/
+!/bin/
+!lib/
+!/tests/
+!.gitignore
+!/.shellcheckrc
+!/*.sh
+!/LICENSE
+!/Makefile
+!/README.md
