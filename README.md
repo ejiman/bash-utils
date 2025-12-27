@@ -38,6 +38,7 @@ brew install coreutils  # for gdate and other GNU utilities
 ```
 bash-utils/
 ├── bin/                # User-facing CLI tools (executable scripts)
+│   ├── color-diff
 │   ├── generate-release-notes
 │   └── slack-post
 ├── lib/                # Shared libraries
@@ -49,6 +50,7 @@ bash-utils/
 │   └── utils.sh        # Utility functions
 ├── tests/              # Bats tests
 │   ├── test_helper.bash
+│   ├── color-diff.bats
 │   ├── generate-release-notes.bats
 │   ├── install.bats
 │   ├── lib_utils.bats
@@ -92,15 +94,40 @@ All tools support standard `--help` and `--version` options:
 
 ```bash
 # Show help for any tool
+color-diff --help
 generate-release-notes --help
 slack-post --help
 
 # Show version
+color-diff --version
 generate-release-notes --version
 slack-post --version
 ```
 
 ### Available Tools
+
+#### color-diff
+
+Show colorized diff between two files with optional JSON key sorting:
+
+```bash
+# Compare two files
+color-diff file1.txt file2.txt
+
+# Compare JSON files with key sorting (requires jq)
+color-diff --json config1.json config2.json
+color-diff -j api-response1.json api-response2.json
+
+# Adjust context lines
+color-diff --context 5 file1.txt file2.txt
+color-diff -c 1 file1.txt file2.txt
+```
+
+Features:
+- Automatic color output when supported by `diff` command
+- JSON mode sorts keys before comparison to ignore ordering differences
+- Configurable context lines (default: 3)
+- Exit code 0 for identical files, 1 for differences
 
 #### generate-release-notes
 

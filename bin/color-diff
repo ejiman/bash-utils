@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Resolve symlinks to get the actual script directory
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
+source "$LIB_DIR/bootstrap.sh"
+
+CLI_NAME="color-diff"
+CLI_VERSION="0.1.0"
+CLI_DESCRIPTION="Show colorized diff between two files"
+CLI_USAGE="color-diff [options] <file1> <file2>"
+
+# ========= Argument definitions =========
+arg_flag JSON -j --json "Sort JSON keys before comparing (requires jq)"
+arg_value CONTEXT -c --context "Number of context lines (default: 3)" "NUM"
+
+# ========= Parse arguments =========
+parse_args "$@"
+
+# ========= Validation =========
+if [[ ${#POSITIONAL[@]} -ne 2 ]]; then
+  die "Expected exactly 2 files to compare. Usage: $CLI_USAGE"
+fi
+
+FILE1="${POSITIONAL[0]}"
+FILE2="${POSITIONAL[1]}"
+
+[[ -f "$FILE1" ]] || die "File not found: $FILE1"
+[[ -f "$FILE2" ]] || die "File not found: $FILE2"
+
+# ========= Cleanup function =========
+cleanup() {
+  if [[ -n "${TEMP_DIR:-}" ]] && [[ -d "$TEMP_DIR" ]]; then
+    rm -rf "$TEMP_DIR"
+  fi
+}
+
+# ========= Main function =========
+main() {
+  local file1_to_diff="$FILE1"
+  local file2_to_diff="$FILE2"
+
+  # Check if JSON mode is enabled
+  if [[ "${JSON:-}" == true ]]; then
+    require_cmd jq
+
+    # Create temporary directory for sorted JSON files
+    TEMP_DIR=$(mktemp -d)
+    trap cleanup EXIT
+
+    # Use original file basenames with "sorted-" prefix
+    local basename1
+    local basename2
+    basename1=$(basename "$FILE1")
+    basename2=$(basename "$FILE2")
+
+    local sorted1="$TEMP_DIR/sorted-$basename1"
+    local sorted2="$TEMP_DIR/sorted-$basename2"
+
+    log_info "Sorting JSON files with jq --sort-keys"
+
+    # Sort JSON files
+    if ! jq --sort-keys . "$FILE1" > "$sorted1" 2> /dev/null; then
+      die "Failed to parse $FILE1 as JSON"
+    fi
+
+    if ! jq --sort-keys . "$FILE2" > "$sorted2" 2> /dev/null; then
+      die "Failed to parse $FILE2 as JSON"
+    fi
+
+    file1_to_diff="$sorted1"
+    file2_to_diff="$sorted2"
+  fi
+
+  # Set diff options (always use unified format)
+  local context="${CONTEXT:-3}"
+  local diff_opts=("-u${context}")
+
+  # Try to use diff --color if available
+  if diff --color=always /dev/null /dev/null &> /dev/null; then
+    diff_opts+=(--color=always)
+    log_info "Comparing files with color output"
+  else
+    log_warn "diff --color not available, using plain output"
+    log_info "Tip: On macOS, install GNU diffutils: brew install diffutils"
+  fi
+
+  # Run diff (note: diff exits with 1 if files differ, so we can't rely on set -e)
+  set +e
+  diff "${diff_opts[@]}" "$file1_to_diff" "$file2_to_diff"
+  local exit_code=$?
+  set -e
+
+  # Exit codes:
+  # 0 = files are identical
+  # 1 = files differ
+  # >1 = error
+  if [[ $exit_code -eq 0 ]]; then
+    log_info "Files are identical"
+  elif [[ $exit_code -eq 1 ]]; then
+    # Files differ (this is expected, not an error)
+    :
+  else
+    die "diff command failed with exit code $exit_code"
+  fi
+
+  return $exit_code
+}
+
+main
