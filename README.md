@@ -38,6 +38,8 @@ brew install coreutils  # for gdate and other GNU utilities
 ```
 bash-utils/
 ├── bin/                # User-facing CLI tools (executable scripts)
+│   ├── generate-release-notes
+│   └── slack-post
 ├── lib/                # Shared libraries
 │   ├── bootstrap.sh    # Load all libraries + OS detection
 │   ├── cli.sh          # Basic help/version display
@@ -47,7 +49,12 @@ bash-utils/
 │   └── utils.sh        # Utility functions
 ├── tests/              # Bats tests
 │   ├── test_helper.bash
-│   ├── ...
+│   ├── generate-release-notes.bats
+│   ├── install.bats
+│   ├── lib_utils.bats
+│   ├── package.bats
+│   ├── release.bats
+│   ├── slack-post.bats
 │   └── README.md       # Testing guide
 ├── .github/
 │   └── workflows/      # GitHub Actions
@@ -83,30 +90,46 @@ export PATH="$HOME/.local/bin:$PATH"
 All tools support standard `--help` and `--version` options:
 
 ```bash
-# Show help
-example-tool --help
+# Show help for any tool
+generate-release-notes --help
+slack-post --help
 
 # Show version
-example-tool --version
+generate-release-notes --version
+slack-post --version
 ```
 
 ### Available Tools
 
-#### example-tool
-
-A demonstration tool showing the argument parsing framework:
-
-```bash
-example-tool -c config.txt -o output.txt input.txt
-example-tool --verbose --config config.txt input.txt
-```
-
 #### generate-release-notes
 
-Generate release notes from git commits:
+Generate release notes from git commits using conventional commit format:
 
 ```bash
+# Generate release notes from latest tag
 generate-release-notes
+
+# Specify version range
+generate-release-notes --from v1.0.0 --to v2.0.0
+
+# Save to file
+generate-release-notes --output RELEASE_NOTES.md
+```
+
+#### slack-post
+
+Post messages to Slack via Incoming Webhook or Web API:
+
+```bash
+# Using Incoming Webhook
+slack-post --webhook "https://hooks.slack.com/services/T00/B00/XXX" "Hello, World!"
+
+# Using environment variables
+export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/T00/B00/XXX"
+slack-post "Hello from bash script!"
+
+# Using Bot Token
+slack-post --token "xoxb-your-token" --channel "C12345678" "Hello via API!"
 ```
 
 ## Development
@@ -257,7 +280,8 @@ brew install bats-core
 bats tests/
 
 # Run specific test file
-bats tests/example-tool.bats
+bats tests/slack-post.bats
+bats tests/generate-release-notes.bats
 
 # Run with TAP output
 bats --tap tests/
