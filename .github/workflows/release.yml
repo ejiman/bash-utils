@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
 
 permissions:
   contents: write
@@ -34,20 +34,28 @@ jobs:
           if [ -n "$PREV_TAG" ]; then
             # Generate release notes and remove the header (first 4 lines)
             ./bin/generate-release-notes --from "$PREV_TAG" --to "${{ steps.version.outputs.VERSION }}" | tail -n +5 > changelog_body.md
-            echo "### What's Changed" > changelog.md
+
+            # Filter to only include Features, Bug Fixes, and Documentation sections
+            awk '
+              /^## Features/ { in_section=1; print; next }
+              /^## Bug Fixes/ { in_section=1; print; next }
+              /^## Documentation/ { in_section=1; print; next }
+              /^## / { in_section=0; next }
+              in_section { print }
+            ' changelog_body.md > changelog_filtered.md
+
+            echo "## What's Changed" > changelog.md
             echo "" >> changelog.md
-            cat changelog_body.md >> changelog.md
+            cat changelog_filtered.md >> changelog.md
           else
-            echo "### What's Changed" > changelog.md
+            echo "## What's Changed" > changelog.md
             echo "" >> changelog.md
             echo "Initial release" >> changelog.md
           fi
 
           # Create full release notes
           cat > release_notes.md <<EOF
-          ## bash-utils ${{ steps.version.outputs.VERSION }}
-
-          ### Installation
+          ## Installation
 
           **Quick install (recommended):**
           \`\`\`bash
@@ -61,7 +69,7 @@ jobs:
 
           $(cat changelog.md)
 
-          ### Checksums
+          ## Checksums
           \`\`\`
           $(sha256sum bash-utils-*.tar.gz)
           \`\`\`
