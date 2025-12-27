@@ -14,6 +14,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Set version from tag
         id: version
@@ -37,9 +40,9 @@ jobs:
 
             # Filter to only include Features, Bug Fixes, and Documentation sections
             awk '
-              /^## Features/ { in_section=1; print; next }
-              /^## Bug Fixes/ { in_section=1; print; next }
-              /^## Documentation/ { in_section=1; print; next }
+              /^## Features/ { in_section=1; print "### Features"; next }
+              /^## Bug Fixes/ { in_section=1; print "### Bug Fixes"; next }
+              /^## Documentation/ { in_section=1; print "### Documentation"; next }
               /^## / { in_section=0; next }
               in_section { print }
             ' changelog_body.md > changelog_filtered.md
