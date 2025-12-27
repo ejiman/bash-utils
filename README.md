@@ -1,6 +1,6 @@
 # bash-utils
 
-[![CI](https://github.com/ejiman/bash-utils/actions/workflows/ci.yml/badge.svg)](https://github.com/ejiman/bash-utils/actions/workflows/ci.yml)
+[![CI](https://github.com/ejiman/bash-utils/actions/workflows/ci-main.yml/badge.svg)](https://github.com/ejiman/bash-utils/actions/workflows/ci-main.yml)
 [![Release](https://img.shields.io/github/v/release/ejiman/bash-utils)](https://github.com/ejiman/bash-utils/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Bash Version](https://img.shields.io/badge/bash-%3E%3D4.0-blue.svg)](https://www.gnu.org/software/bash/)
@@ -58,8 +58,9 @@ bash-utils/
 │   └── README.md       # Testing guide
 ├── .github/
 │   └── workflows/      # GitHub Actions
-│       ├── ci.yml      # CI (tests & linting)
-│       └── release.yml # Release automation
+│       ├── ci-main.yml   # CI for main branch (tests & linting)
+│       ├── ci-others.yml # CI for other branches (tests & linting)
+│       └── release.yml   # Release automation
 ├── install.sh          # Installation script
 ├── package.sh          # Packaging script (creates tarball)
 ├── release.sh          # Release automation script (version management & tagging)
@@ -382,7 +383,13 @@ This creates a `bash-utils-{version}.tar.gz` file with all necessary files.
 
 The project includes GitHub Actions workflows:
 
-- **CI Workflow** (`.github/workflows/ci.yml`): Runs on pull requests and pushes
+- **CI Workflow for main** (`.github/workflows/ci-main.yml`): Runs on pull requests and pushes to main branch
+
+  - Tests on Linux and macOS
+  - Runs shellcheck and Bats tests
+  - Checks code formatting
+
+- **CI Workflow for others** (`.github/workflows/ci-others.yml`): Runs on pull requests and pushes to branches other than main
 
   - Tests on Linux and macOS
   - Runs shellcheck and Bats tests
