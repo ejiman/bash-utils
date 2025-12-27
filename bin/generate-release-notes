@@ -6,7 +6,7 @@ LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
 source "$LIB_DIR/bootstrap.sh"
 
 CLI_NAME="generate-release-notes"
-CLI_VERSION="1.0.0"
+CLI_VERSION="0.1.0"
 CLI_DESCRIPTION="Generate release notes from git commits using Conventional Commits format"
 CLI_USAGE="generate-release-notes [options]"
 
