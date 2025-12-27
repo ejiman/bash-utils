@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
+source "$LIB_DIR/bootstrap.sh"
+
+CLI_NAME="generate-release-notes"
+CLI_VERSION="1.0.0"
+CLI_DESCRIPTION="Generate release notes from git commits using Conventional Commits format"
+CLI_USAGE="generate-release-notes [options]"
+
+# ========= Argument definitions =========
+arg_value FROM -f --from "Starting tag/commit (default: latest tag)" "TAG"
+arg_value TO -t --to "Ending tag/commit (default: HEAD)" "TAG"
+arg_value OUTPUT -o --output "Output file (default: stdout)" "FILE"
+arg_flag NO_GROUP "" --no-group "Do not group by category"
+arg_flag VERBOSE "" --verbose "Enable verbose output"
+
+# ========= Parse arguments =========
+parse_args "$@"
+
+# ========= Helper functions =========
+
+# Get the latest tag
+get_latest_tag() {
+  git describe --tags --abbrev=0 2> /dev/null || echo ""
+}
+
+# Get commit range
+get_commit_range() {
+  local from="${FROM:-}"
+  local to="${TO:-HEAD}"
+
+  # If FROM is not specified, get the latest tag
+  if [[ -z "$from" ]]; then
+    from=$(get_latest_tag)
+    if [[ -z "$from" ]]; then
+      die "No tags found in repository. Please specify --from manually."
+    fi
+  fi
+
+  echo "${from}..${to}"
+}
+
+# Parse conventional commit message
+# Returns: type|scope|description
+parse_conventional_commit() {
+  local message="$1"
+  local pattern='^([a-z]+)(\([^)]+\))?:[[:space:]](.+)$'
+
+  # Pattern: type(scope): description or type: description
+  if [[ "$message" =~ $pattern ]]; then
+    local type="${BASH_REMATCH[1]}"
+    local scope="${BASH_REMATCH[2]}"
+    local desc="${BASH_REMATCH[3]}"
+
+    # Remove parentheses from scope
+    scope="${scope#(}"
+    scope="${scope%)}"
+
+    echo "${type}|${scope}|${desc}"
+    return 0
+  fi
+
+  # Not a conventional commit
+  return 1
+}
+
+# Get category name for commit type
+get_category() {
+  local type="$1"
+
+  case "$type" in
+    feat) echo "Features" ;;
+    fix) echo "Bug Fixes" ;;
+    docs) echo "Documentation" ;;
+    perf) echo "Performance Improvements" ;;
+    refactor) echo "Code Refactoring" ;;
+    test) echo "Tests" ;;
+    build) echo "Build System" ;;
+    ci) echo "Continuous Integration" ;;
+    chore) echo "Chores" ;;
+    style) echo "Code Style" ;;
+    *) echo "Other Changes" ;;
+  esac
+}
+
+# Generate release notes
+generate_notes() {
+  local range
+  range=$(get_commit_range)
+
+  [[ "${VERBOSE:-}" == true ]] && log_info "Generating release notes from ${range/../ to }" >&2
+
+  # Associative array to store commits by category
+  declare -A categories
+
+  # Get commits in range
+  while IFS='|' read -r _ subject; do
+    [[ "${VERBOSE:-}" == true ]] && log_info "Processing: $subject" >&2
+
+    # Try to parse as conventional commit
+    if parsed=$(parse_conventional_commit "$subject"); then
+      IFS='|' read -r type scope desc <<< "$parsed"
+
+      local category
+      category=$(get_category "$type")
+
+      # Add scope to description if present
+      if [[ -n "$scope" ]]; then
+        desc="**${scope}**: ${desc}"
+      fi
+
+      # Append to category
+      if [[ "${NO_GROUP:-}" == true ]]; then
+        categories["All"]+="- ${desc}"$'\n'
+      else
+        categories["$category"]+="- ${desc}"$'\n'
+      fi
+    else
+      # Non-conventional commit
+      [[ "${VERBOSE:-}" == true ]] && log_warn "Non-conventional commit: $subject" >&2
+
+      if [[ "${NO_GROUP:-}" == true ]]; then
+        categories["All"]+="- ${subject}"$'\n'
+      else
+        categories["Other Changes"]+="- ${subject}"$'\n'
+      fi
+    fi
+  done < <(git log --pretty=tformat:"%H|%s" "$range")
+
+  # Check if any commits found
+  if [[ ${#categories[@]} -eq 0 ]]; then
+    log_warn "No commits found in range: $range"
+    return
+  fi
+
+  # Helper function to output release notes
+  output_notes() {
+    # Print header
+    local from="${FROM:-$(get_latest_tag)}"
+    local to="${TO:-HEAD}"
+
+    if [[ "$to" == "HEAD" ]]; then
+      echo "# Release Notes"
+      echo
+      echo "Changes since ${from}:"
+    else
+      echo "# Release Notes: ${to}"
+      echo
+      echo "Changes from ${from} to ${to}:"
+    fi
+    echo
+
+    # Print categories in order
+    local ordered_categories=(
+      "Features"
+      "Bug Fixes"
+      "Performance Improvements"
+      "Code Refactoring"
+      "Documentation"
+      "Tests"
+      "Build System"
+      "Continuous Integration"
+      "Code Style"
+      "Chores"
+      "Other Changes"
+      "All"
+    )
+
+    for category in "${ordered_categories[@]}"; do
+      if [[ -n "${categories[$category]:-}" ]]; then
+        if [[ "${NO_GROUP:-}" == true ]]; then
+          echo "## Changes"
+        else
+          echo "## ${category}"
+        fi
+        echo
+        echo -n "${categories[$category]}"
+        echo
+      fi
+    done
+  }
+
+  # Output to file or stdout
+  if [[ -n "${OUTPUT:-}" ]]; then
+    output_notes > "$OUTPUT"
+    log_info "Release notes written to: $OUTPUT"
+  else
+    output_notes
+  fi
+}
+
+# ========= Main function =========
+main() {
+  # Check if we're in a git repository
+  if ! git rev-parse --git-dir > /dev/null 2>&1; then
+    die "Not a git repository"
+  fi
+
+  generate_notes
+}
+
+main

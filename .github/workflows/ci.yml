@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          # Install bats
+          git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats-core
+          sudo /tmp/bats-core/install.sh /usr/local
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install bats-core
+          # Install GNU tools for macOS compatibility
+          brew install gnu-sed coreutils
+          # Install Bash 4+ (macOS default is 3.2, but this project requires 4.0+)
+          brew install bash
+          # Ensure Homebrew's bash is first in PATH
+          echo "$(brew --prefix)/bin" >> $GITHUB_PATH
+
+      - name: Verify Bash version
+        run: |
+          echo "Bash location: $(which bash)"
+          bash --version | head -n1
+          # Ensure we're using Bash 4.0 or higher
+          BASH_VERSION=$(bash --version | head -n1 | grep -oE '[0-9]+\.[0-9]+' | head -n1)
+          MAJOR_VERSION=$(echo "$BASH_VERSION" | cut -d. -f1)
+          if [ "$MAJOR_VERSION" -lt 4 ]; then
+            echo "ERROR: Bash version $BASH_VERSION is too old. This project requires Bash 4.0+"
+            exit 1
+          fi
+
+      - name: Run tests
+        run: make test
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Install shfmt
+        run: |
+          wget -qO- https://github.com/mvdan/sh/releases/download/v3.8.0/shfmt_v3.8.0_linux_amd64 > shfmt
+          chmod +x shfmt
+          sudo mv shfmt /usr/local/bin/
+
+      - name: Check formatting
+        run: make fmt-check
+
+      - name: Run shellcheck
+        run: make lint

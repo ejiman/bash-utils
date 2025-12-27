@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ========= Bootstrap =========
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
+source "$LIB_DIR/bootstrap.sh"
+
+# ========= CLI Information =========
+CLI_NAME="slack-post"
+CLI_VERSION="0.1.0"
+CLI_DESCRIPTION="Post messages to Slack via Incoming Webhook or Web API (chat.postMessage)"
+CLI_USAGE="slack-post [options] <message>
+
+Environment Variables:
+  SLACK_WEBHOOK_URL     Incoming Webhook URL (alternative to --webhook)
+  SLACK_BOT_TOKEN       Bot Token (alternative to --token)
+  SLACK_CHANNEL         Channel ID (alternative to --channel)
+
+Examples:
+  # Using Incoming Webhook
+  slack-post --webhook \"https://hooks.slack.com/services/T00/B00/XXX\" \"Hello, World!\"
+
+  # Using environment variables
+  export SLACK_WEBHOOK_URL=\"https://hooks.slack.com/services/T00/B00/XXX\"
+  slack-post \"Hello from bash script!\"
+
+  # Using Bot Token
+  slack-post --token \"xoxb-your-token\" --channel \"C12345678\" \"Hello via API!\""
+
+# ========= Argument Definitions =========
+arg_value WEBHOOK_URL -w --webhook "Slack Incoming Webhook URL" "URL"
+arg_value BOT_TOKEN -t --token "Slack Bot Token for chat.postMessage API" "TOKEN"
+arg_value CHANNEL -c --channel "Slack channel ID (required with --token)" "CHANNEL"
+
+# ========= Parse Arguments =========
+parse_args "$@"
+
+# ========= Apply Environment Variable Defaults =========
+# Command-line options take precedence over environment variables
+# If token is specified on command line, ignore webhook env var and vice versa
+if [[ -n "${BOT_TOKEN:-}" ]]; then
+  # Token was specified on command line, use API method
+  CHANNEL="${CHANNEL:-${SLACK_CHANNEL:-}}"
+elif [[ -n "${WEBHOOK_URL:-}" ]]; then
+  # Webhook was specified on command line, use webhook method
+  : # Nothing to do
+else
+  # Nothing on command line, fall back to environment variables
+  WEBHOOK_URL="${SLACK_WEBHOOK_URL:-}"
+  BOT_TOKEN="${SLACK_BOT_TOKEN:-}"
+  CHANNEL="${SLACK_CHANNEL:-}"
+fi
+
+# ========= Main Function =========
+main() {
+  # Validate message argument
+  if [[ ${#POSITIONAL[@]} -eq 0 ]]; then
+    die "Message is required as a positional argument"
+  fi
+
+  local message="${POSITIONAL[0]}"
+
+  # Validate that at least one method is specified
+  if [[ -z "${WEBHOOK_URL:-}" && -z "${BOT_TOKEN:-}" ]]; then
+    die "Either --webhook URL or --token TOKEN must be specified (or set via environment variables)"
+  fi
+
+  # Use Incoming Webhook
+  if [[ -n "${WEBHOOK_URL:-}" ]]; then
+    post_via_webhook "$message"
+  # Use Bot Token (chat.postMessage API)
+  elif [[ -n "${BOT_TOKEN:-}" ]]; then
+    post_via_api "$message"
+  fi
+}
+
+# ========= Incoming Webhook Method =========
+post_via_webhook() {
+  local message="$1"
+  log_info "Posting message via Incoming Webhook..."
+
+  local response
+  response=$(curl -s -w "\n%{http_code}" -X POST \
+    -H 'Content-type: application/json' \
+    --data "{\"text\":\"$message\"}" \
+    "$WEBHOOK_URL")
+
+  local http_code
+  http_code=$(echo "$response" | tail -n1)
+  local body
+  body=$(echo "$response" | sed '$d')
+
+  if [[ "$http_code" == "200" ]]; then
+    log_info "Message posted successfully"
+  else
+    log_error "HTTP error: $http_code"
+    log_error "$body"
+    exit 1
+  fi
+}
+
+# ========= Web API Method =========
+post_via_api() {
+  local message="$1"
+
+  # Validate channel is specified
+  if [[ -z "${CHANNEL:-}" ]]; then
+    die "The --channel option is required when using --token"
+  fi
+
+  log_info "Posting message via chat.postMessage API..."
+
+  local response
+  response=$(curl -s -X POST \
+    -H "Authorization: Bearer $BOT_TOKEN" \
+    -H 'Content-type: application/json' \
+    --data "{\"channel\":\"$CHANNEL\",\"text\":\"$message\"}" \
+    https://slack.com/api/chat.postMessage)
+
+  # Check the 'ok' field in the response
+  local ok
+  ok=$(echo "$response" | grep -o '"ok":[^,}]*' | cut -d':' -f2)
+
+  if [[ "$ok" == "true" ]]; then
+    log_info "Message posted successfully"
+    echo "$response" | grep -o '"ts":"[^"]*"'
+  else
+    log_error "API error occurred"
+    local error
+    error=$(echo "$response" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)
+    log_error "Error: $error"
+    log_error "Details: $response"
+    exit 1
+  fi
+}
+
+main
