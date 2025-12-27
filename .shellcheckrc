@@ -1,0 +1,23 @@
+# ===============================
+# shellcheck configuration
+# ===============================
+
+# 使用シェルを明示
+shell=bash
+
+# 外部から source されるファイルを追跡
+follow-sources=true
+
+# よくある誤検知を抑える
+disable=SC1091   # Not following sourced file (パスを自前管理しているため)
+disable=SC2034   # Appears unused (argparseで動的に使う変数用)
+disable=SC2154   # Referenced but not assigned (declare的使用を許容)
+
+# 表示レベル（error / warning / info / style）
+severity=warning
+
+# 出力を読みやすく
+color=always
+
+# 追加でチェックしたい項目（コメント用）
+# enable=SC2086  # Double quote to prevent globbing and word splitting
