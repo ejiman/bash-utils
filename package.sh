@@ -9,14 +9,17 @@ PROJECT_NAME="bash-utils"
 info() { echo -e "\033[1;34m[INFO]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[WARN]\033[0m $*"; }
 error() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; }
-die() { error "$*"; exit 1; }
+die() {
+  error "$*"
+  exit 1
+}
 
 # ========= Version detection =========
 # Try to get version from git tag, fallback to "dev"
-if git describe --tags --exact-match 2>/dev/null; then
+if git describe --tags --exact-match 2> /dev/null; then
   VERSION="$(git describe --tags --exact-match)"
 else
-  VERSION="dev-$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+  VERSION="dev-$(git rev-parse --short HEAD 2> /dev/null || echo 'unknown')"
 fi
 
 info "Packaging $PROJECT_NAME version: $VERSION"
@@ -36,7 +39,7 @@ info "Copying project files..."
 cp -r bin lib "$PACKAGE_DIR/"
 
 # Essential files
-cp install.sh README.md LICENSE "$PACKAGE_DIR/" 2>/dev/null || {
+cp install.sh README.md LICENSE "$PACKAGE_DIR/" 2> /dev/null || {
   warn "LICENSE file not found, skipping"
   cp install.sh README.md "$PACKAGE_DIR/"
 }

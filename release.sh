@@ -8,7 +8,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 info() { echo -e "\033[1;34m[INFO]\033[0m $*"; }
 warn() { echo -e "\033[1;33m[WARN]\033[0m $*"; }
 error() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; }
-die() { error "$*"; exit 1; }
+die() {
+  error "$*"
+  exit 1
+}
 
 # ========= Check git status =========
 if ! git diff-index --quiet HEAD --; then
@@ -16,7 +19,7 @@ if ! git diff-index --quiet HEAD --; then
 fi
 
 # ========= Get current version =========
-CURRENT_VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+CURRENT_VERSION=$(git describe --tags --abbrev=0 2> /dev/null || echo "v0.0.0")
 info "Current version: $CURRENT_VERSION"
 
 # ========= Parse version =========
