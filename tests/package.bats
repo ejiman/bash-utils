@@ -17,6 +17,7 @@ setup() {
   chmod +x "${FAKE_PROJECT_DIR}/bin/dummy-tool"
   echo "# lib file" > "${FAKE_PROJECT_DIR}/lib/utils.sh"
   echo "# Install script" > "${FAKE_PROJECT_DIR}/install.sh"
+  echo "# Uninstall script" > "${FAKE_PROJECT_DIR}/uninstall.sh"
   echo "# README" > "${FAKE_PROJECT_DIR}/README.md"
   echo "MIT License" > "${FAKE_PROJECT_DIR}/LICENSE"
   echo "# shellcheck config" > "${FAKE_PROJECT_DIR}/.shellcheckrc"
@@ -149,6 +150,19 @@ get_extracted_dir() {
   local extracted_dir
   extracted_dir=$(get_extracted_dir)
   [[ -f "${extracted_dir}/install.sh" ]]
+}
+
+@test "package.sh: includes uninstall.sh in tarball" {
+  run_package
+  assert_success
+
+  local tarball
+  tarball=$(get_tarball)
+  extract_tarball "$tarball"
+
+  local extracted_dir
+  extracted_dir=$(get_extracted_dir)
+  [[ -f "${extracted_dir}/uninstall.sh" ]]
 }
 
 @test "package.sh: includes README.md in tarball" {
@@ -297,6 +311,7 @@ get_extracted_dir() {
   assert_output_contains "bin/dummy-tool"
   assert_output_contains "lib/utils.sh"
   assert_output_contains "install.sh"
+  assert_output_contains "uninstall.sh"
 }
 
 @test "package.sh: preserves file permissions in tarball" {

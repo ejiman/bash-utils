@@ -39,9 +39,9 @@ info "Copying project files..."
 cp -r bin lib "$PACKAGE_DIR/"
 
 # Essential files
-cp install.sh README.md LICENSE "$PACKAGE_DIR/" 2> /dev/null || {
+cp install.sh uninstall.sh README.md LICENSE "$PACKAGE_DIR/" 2> /dev/null || {
   warn "LICENSE file not found, skipping"
-  cp install.sh README.md "$PACKAGE_DIR/"
+  cp install.sh uninstall.sh README.md "$PACKAGE_DIR/"
 }
 
 # Optional files
