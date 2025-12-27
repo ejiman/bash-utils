@@ -1,0 +1,85 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create tarball
+        run: |
+          ./package.sh
+          ls -lh *.tar.gz
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git tag --sort=-version:refname | sed -n '2p')
+
+          # Generate changelog using our script
+          if [ -n "$PREV_TAG" ]; then
+            # Generate release notes and remove the header (first 4 lines)
+            ./bin/generate-release-notes --from "$PREV_TAG" --to "${{ steps.version.outputs.VERSION }}" | tail -n +5 > changelog_body.md
+            echo "### What's Changed" > changelog.md
+            echo "" >> changelog.md
+            cat changelog_body.md >> changelog.md
+          else
+            echo "### What's Changed" > changelog.md
+            echo "" >> changelog.md
+            echo "Initial release" >> changelog.md
+          fi
+
+          # Create full release notes
+          cat > release_notes.md <<EOF
+          ## bash-utils ${{ steps.version.outputs.VERSION }}
+
+          ### Installation
+
+          **Quick install (recommended):**
+          \`\`\`bash
+          curl -fsSL https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/bash-utils-${{ steps.version.outputs.VERSION }}.tar.gz | tar -xz
+          cd bash-utils-${{ steps.version.outputs.VERSION }}
+          ./install.sh
+          \`\`\`
+
+          **Manual download:**
+          Download the tarball below, extract it, and run \`./install.sh\`
+
+          $(cat changelog.md)
+
+          ### Checksums
+          \`\`\`
+          $(sha256sum bash-utils-*.tar.gz)
+          \`\`\`
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: release_notes.md
+          files: |
+            bash-utils-*.tar.gz
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload tarball as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bash-utils-${{ steps.version.outputs.VERSION }}
+          path: bash-utils-*.tar.gz
+          retention-days: 30
