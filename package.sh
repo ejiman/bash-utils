@@ -36,7 +36,7 @@ mkdir -p "$PACKAGE_DIR"
 info "Copying project files..."
 
 # Essential directories
-cp -r bin lib "$PACKAGE_DIR/"
+cp -r bin lib docs "$PACKAGE_DIR/"
 
 # Essential files
 cp install.sh uninstall.sh README.md LICENSE "$PACKAGE_DIR/" 2> /dev/null || {

@@ -11,11 +11,13 @@ setup() {
   FAKE_PROJECT_DIR="${TEST_TEMP_DIR}/project"
   mkdir -p "${FAKE_PROJECT_DIR}/bin"
   mkdir -p "${FAKE_PROJECT_DIR}/lib"
+  mkdir -p "${FAKE_PROJECT_DIR}/docs"
 
   # Create dummy files
   echo "#!/bin/bash" > "${FAKE_PROJECT_DIR}/bin/dummy-tool"
   chmod +x "${FAKE_PROJECT_DIR}/bin/dummy-tool"
   echo "# lib file" > "${FAKE_PROJECT_DIR}/lib/utils.sh"
+  echo "# Documentation" > "${FAKE_PROJECT_DIR}/docs/README.md"
   echo "# Install script" > "${FAKE_PROJECT_DIR}/install.sh"
   echo "# Uninstall script" > "${FAKE_PROJECT_DIR}/uninstall.sh"
   echo "# README" > "${FAKE_PROJECT_DIR}/README.md"
@@ -137,6 +139,20 @@ get_extracted_dir() {
   extracted_dir=$(get_extracted_dir)
   [[ -d "${extracted_dir}/lib" ]]
   [[ -f "${extracted_dir}/lib/utils.sh" ]]
+}
+
+@test "package.sh: includes docs directory in tarball" {
+  run_package
+  assert_success
+
+  local tarball
+  tarball=$(get_tarball)
+  extract_tarball "$tarball"
+
+  local extracted_dir
+  extracted_dir=$(get_extracted_dir)
+  [[ -d "${extracted_dir}/docs" ]]
+  [[ -f "${extracted_dir}/docs/README.md" ]]
 }
 
 @test "package.sh: includes install.sh in tarball" {
@@ -310,6 +326,7 @@ get_extracted_dir() {
   assert_success
   assert_output_contains "bin/dummy-tool"
   assert_output_contains "lib/utils.sh"
+  assert_output_contains "docs/README.md"
   assert_output_contains "install.sh"
   assert_output_contains "uninstall.sh"
 }

@@ -35,6 +35,11 @@ if [[ ! -d "${SCRIPT_DIR}/lib" ]]; then
   exit 1
 fi
 
+if [[ ! -d "${SCRIPT_DIR}/docs" ]]; then
+  error "docs directory not found: ${SCRIPT_DIR}/docs"
+  exit 1
+fi
+
 # ========= Create installation directories =========
 info "Installing to: $INSTALL_ROOT"
 mkdir -p "$INSTALL_ROOT"
@@ -42,7 +47,7 @@ mkdir -p "$INSTALL_BIN_DIR"
 
 # ========= Copy project files =========
 info "Copying project files..."
-cp -r "${SCRIPT_DIR}/bin" "${SCRIPT_DIR}/lib" "$INSTALL_ROOT/"
+cp -r "${SCRIPT_DIR}/bin" "${SCRIPT_DIR}/lib" "${SCRIPT_DIR}/docs" "$INSTALL_ROOT/"
 info "Project files copied"
 
 # ========= Create symlinks in bin directory =========

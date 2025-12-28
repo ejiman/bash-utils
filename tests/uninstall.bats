@@ -15,11 +15,13 @@ setup() {
   FAKE_PROJECT_DIR="${TEST_TEMP_DIR}/project"
   mkdir -p "${FAKE_PROJECT_DIR}/bin"
   mkdir -p "${FAKE_PROJECT_DIR}/lib"
+  mkdir -p "${FAKE_PROJECT_DIR}/docs"
 
   # Create dummy files
   echo "#!/bin/bash" > "${FAKE_PROJECT_DIR}/bin/dummy-tool"
   chmod +x "${FAKE_PROJECT_DIR}/bin/dummy-tool"
   echo "# lib file" > "${FAKE_PROJECT_DIR}/lib/dummy.sh"
+  echo "# Documentation" > "${FAKE_PROJECT_DIR}/docs/example.md"
 
   # Copy install.sh and uninstall.sh to fake project
   cp "${PROJECT_ROOT}/install.sh" "${FAKE_PROJECT_DIR}/"
@@ -250,6 +252,7 @@ run_uninstall() {
   # Manually create installation directory without going through install.sh
   mkdir -p "${FAKE_INSTALL_PREFIX}/share/bash-utils/bin"
   mkdir -p "${FAKE_INSTALL_PREFIX}/share/bash-utils/lib"
+  mkdir -p "${FAKE_INSTALL_PREFIX}/share/bash-utils/docs"
   echo "#!/bin/bash" > "${FAKE_INSTALL_PREFIX}/share/bash-utils/bin/tool"
 
   # Run uninstall (no symlinks exist)
@@ -266,8 +269,11 @@ run_uninstall() {
   # Re-run setup with custom prefix
   mkdir -p "${FAKE_PROJECT_DIR}/bin"
   mkdir -p "${FAKE_PROJECT_DIR}/lib"
+  mkdir -p "${FAKE_PROJECT_DIR}/docs"
   echo "#!/bin/bash" > "${FAKE_PROJECT_DIR}/bin/custom-tool"
   chmod +x "${FAKE_PROJECT_DIR}/bin/custom-tool"
+  echo "# lib file" > "${FAKE_PROJECT_DIR}/lib/dummy.sh"
+  echo "# Documentation" > "${FAKE_PROJECT_DIR}/docs/example.md"
 
   # Install to custom prefix
   run_install

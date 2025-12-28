@@ -15,11 +15,13 @@ setup() {
   FAKE_PROJECT_DIR="${TEST_TEMP_DIR}/project"
   mkdir -p "${FAKE_PROJECT_DIR}/bin"
   mkdir -p "${FAKE_PROJECT_DIR}/lib"
+  mkdir -p "${FAKE_PROJECT_DIR}/docs"
 
   # Create dummy files
   echo "#!/bin/bash" > "${FAKE_PROJECT_DIR}/bin/dummy-tool"
   chmod +x "${FAKE_PROJECT_DIR}/bin/dummy-tool"
   echo "# lib file" > "${FAKE_PROJECT_DIR}/lib/dummy.sh"
+  echo "# Documentation" > "${FAKE_PROJECT_DIR}/docs/example.md"
 
   # Copy install.sh to fake project
   cp "${PROJECT_ROOT}/install.sh" "${FAKE_PROJECT_DIR}/"
@@ -63,8 +65,10 @@ run_install() {
   # Check that files were copied
   [[ -d "${FAKE_INSTALL_PREFIX}/share/bash-utils/bin" ]]
   [[ -d "${FAKE_INSTALL_PREFIX}/share/bash-utils/lib" ]]
+  [[ -d "${FAKE_INSTALL_PREFIX}/share/bash-utils/docs" ]]
   [[ -f "${FAKE_INSTALL_PREFIX}/share/bash-utils/bin/dummy-tool" ]]
   [[ -f "${FAKE_INSTALL_PREFIX}/share/bash-utils/lib/dummy.sh" ]]
+  [[ -f "${FAKE_INSTALL_PREFIX}/share/bash-utils/docs/example.md" ]]
 }
 
 @test "install.sh: creates symbolic links" {
@@ -94,6 +98,14 @@ run_install() {
   run_install
   assert_failure
   assert_output_contains "lib directory not found"
+}
+
+@test "install.sh: fails when docs directory is missing" {
+  rm -rf "${FAKE_PROJECT_DIR}/docs"
+
+  run_install
+  assert_failure
+  assert_output_contains "docs directory not found"
 }
 
 @test "install.sh: shows PATH warning when install dir not in PATH" {
