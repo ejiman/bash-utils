@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ========= Bootstrap =========
+# Resolve symlinks to get the actual script directory
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
+source "$LIB_DIR/bootstrap.sh"
+
+# ========= CLI Information =========
+CLI_NAME="github-create-issues"
+CLI_VERSION="1.0.0"
+CLI_DESCRIPTION="Create multiple GitHub issues from JSON input"
+CLI_USAGE="github-create-issues [options]
+
+Input Format (JSON):
+  Single issue:
+    {\"title\": \"Issue title\", \"body\": \"Description\"}
+
+  Multiple issues:
+    [{\"title\": \"Issue 1\", \"body\": \"Desc 1\"}, ...]
+
+  Available fields per issue:
+    - title (required): Issue title
+    - body (optional): Issue description
+    - labels (optional): Array of label names
+    - assignees (optional): Array of usernames
+    - milestone (optional): Milestone number
+    - template (optional): Issue template name
+
+Examples:
+  # Create issues from stdin
+  echo '[{\"title\":\"Bug fix\",\"body\":\"Fix login\"}]' | github-create-issues
+
+  # Create issues from file
+  github-create-issues -i issues.json
+
+  # With issue template
+  github-create-issues -i issues.json -t bug_report.md
+
+  # With default labels and project
+  github-create-issues -i issues.json -l bug,priority-high -p \"Project Name\"
+
+  # Dry run
+  github-create-issues -i issues.json --dry-run"
+
+# ========= Argument Definitions =========
+arg_value INPUT -i --input "JSON input file (default: stdin)" "FILE"
+arg_value TEMPLATE -t --template "GitHub issue template name" "TEMPLATE"
+arg_value LABELS -l --labels "Default labels (comma-separated)" "LABELS"
+arg_value PROJECT -p --project "Add to GitHub project" "PROJECT"
+arg_value MILESTONE -m --milestone "Default milestone number" "NUMBER"
+arg_value ASSIGNEES -a --assignees "Default assignees (comma-separated)" "USERS"
+arg_value REPO -r --repo "Target repository (default: current repo)" "OWNER/REPO"
+arg_flag DRY_RUN -n --dry-run "Show what would be created without actually creating"
+arg_flag VERBOSE -V --verbose "Enable verbose output"
+
+# ========= Parse Arguments =========
+parse_args "$@"
+
+# ========= Dependency Check =========
+require_cmd gh
+require_cmd jq
+
+# ========= Main Function =========
+main() {
+  local json_input
+
+  # Read JSON input
+  if [[ -n "${INPUT:-}" ]]; then
+    [[ "${VERBOSE:-}" == true ]] && log_info "Reading JSON from file: $INPUT"
+    [[ ! -f "$INPUT" ]] && die "Input file not found: $INPUT"
+    json_input=$(cat "$INPUT")
+  else
+    [[ "${VERBOSE:-}" == true ]] && log_info "Reading JSON from stdin..."
+    if [[ -t 0 ]]; then
+      die "No input provided. Use -i/--input or pipe JSON to stdin"
+    fi
+    json_input=$(cat)
+  fi
+
+  # Validate JSON
+  if ! echo "$json_input" | jq empty 2> /dev/null; then
+    die "Invalid JSON input"
+  fi
+
+  # Normalize to array format
+  local issues_json
+  if echo "$json_input" | jq -e 'type == "array"' > /dev/null 2>&1; then
+    issues_json="$json_input"
+  else
+    issues_json="[$json_input]"
+  fi
+
+  # Get issue count
+  local issue_count
+  issue_count=$(echo "$issues_json" | jq 'length')
+
+  [[ "$issue_count" -eq 0 ]] && die "No issues found in JSON input"
+
+  log_info "Found $issue_count issue(s) to create"
+
+  # Process each issue
+  local i
+  for ((i = 0; i < issue_count; i++)); do
+    process_issue "$issues_json" "$i"
+  done
+
+  if [[ "${DRY_RUN:-}" == true ]]; then
+    log_info "Dry run completed. No issues were created."
+  else
+    log_info "Successfully created $issue_count issue(s)"
+  fi
+}
+
+# ========= Process Single Issue =========
+process_issue() {
+  local issues_json="$1"
+  local index="$2"
+
+  local issue
+  issue=$(echo "$issues_json" | jq -r ".[$index]")
+
+  # Extract fields
+  local title body labels_json assignees_json milestone_num template_name
+  title=$(echo "$issue" | jq -r '.title // empty')
+  body=$(echo "$issue" | jq -r '.body // empty')
+  labels_json=$(echo "$issue" | jq -r '.labels // empty')
+  assignees_json=$(echo "$issue" | jq -r '.assignees // empty')
+  milestone_num=$(echo "$issue" | jq -r '.milestone // empty')
+  template_name=$(echo "$issue" | jq -r '.template // empty')
+
+  # Validate required fields
+  [[ -z "$title" ]] && die "Issue at index $index is missing required field: title"
+
+  # Merge labels (default + per-issue)
+  local labels_arg=""
+  local merged_labels=()
+
+  if [[ -n "${LABELS:-}" ]]; then
+    IFS=',' read -ra default_labels <<< "$LABELS"
+    merged_labels+=("${default_labels[@]}")
+  fi
+
+  if [[ "$labels_json" != "null" && "$labels_json" != "" ]]; then
+    local issue_labels
+    issue_labels=$(echo "$labels_json" | jq -r '.[]')
+    while IFS= read -r label; do
+      [[ -n "$label" ]] && merged_labels+=("$label")
+    done <<< "$issue_labels"
+  fi
+
+  if [[ ${#merged_labels[@]} -gt 0 ]]; then
+    labels_arg=$(printf ",%s" "${merged_labels[@]}")
+    labels_arg="${labels_arg:1}" # Remove leading comma
+  fi
+
+  # Merge assignees (default + per-issue)
+  local assignees_arg=""
+  local merged_assignees=()
+
+  if [[ -n "${ASSIGNEES:-}" ]]; then
+    IFS=',' read -ra default_assignees <<< "$ASSIGNEES"
+    merged_assignees+=("${default_assignees[@]}")
+  fi
+
+  if [[ "$assignees_json" != "null" && "$assignees_json" != "" ]]; then
+    local issue_assignees
+    issue_assignees=$(echo "$assignees_json" | jq -r '.[]')
+    while IFS= read -r assignee; do
+      [[ -n "$assignee" ]] && merged_assignees+=("$assignee")
+    done <<< "$issue_assignees"
+  fi
+
+  if [[ ${#merged_assignees[@]} -gt 0 ]]; then
+    assignees_arg=$(printf ",%s" "${merged_assignees[@]}")
+    assignees_arg="${assignees_arg:1}" # Remove leading comma
+  fi
+
+  # Use per-issue milestone/template if available, otherwise use default
+  local milestone="${milestone_num:-${MILESTONE:-}}"
+  local template="${template_name:-${TEMPLATE:-}}"
+
+  # Build gh issue create command
+  local cmd_args=()
+  cmd_args+=(--title "$title")
+
+  [[ -n "$body" ]] && cmd_args+=(--body "$body")
+  [[ -n "$labels_arg" ]] && cmd_args+=(--label "$labels_arg")
+  [[ -n "$assignees_arg" ]] && cmd_args+=(--assignee "$assignees_arg")
+  [[ -n "$milestone" ]] && cmd_args+=(--milestone "$milestone")
+  [[ -n "$template" ]] && cmd_args+=(--template "$template")
+  [[ -n "${PROJECT:-}" ]] && cmd_args+=(--project "${PROJECT}")
+  [[ -n "${REPO:-}" ]] && cmd_args+=(--repo "${REPO}")
+
+  # Execute or print
+  if [[ "${DRY_RUN:-}" == true ]]; then
+    echo "─────────────────────────────────────"
+    echo "Would create issue #$((index + 1)):"
+    echo "  Title: $title"
+    [[ -n "$body" ]] && echo "  Body: ${body:0:100}..."
+    [[ -n "$labels_arg" ]] && echo "  Labels: $labels_arg"
+    [[ -n "$assignees_arg" ]] && echo "  Assignees: $assignees_arg"
+    [[ -n "$milestone" ]] && echo "  Milestone: $milestone"
+    [[ -n "$template" ]] && echo "  Template: $template"
+    [[ -n "${PROJECT:-}" ]] && echo "  Project: ${PROJECT}"
+    [[ -n "${REPO:-}" ]] && echo "  Repo: ${REPO}"
+    [[ "${VERBOSE:-}" == true ]] && echo "  Command: gh issue create ${cmd_args[*]}"
+    return 0
+  else
+    [[ "${VERBOSE:-}" == true ]] && log_info "Creating issue: $title"
+    if gh issue create "${cmd_args[@]}"; then
+      log_info "✓ Created: $title"
+    else
+      log_error "✗ Failed to create: $title"
+      exit 1
+    fi
+  fi
+}
+
+main

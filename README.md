@@ -40,6 +40,7 @@ bash-utils/
 ├── bin/                # User-facing CLI tools (executable scripts)
 │   ├── color-diff
 │   ├── generate-release-notes
+│   ├── github-create-issues
 │   └── slack-post
 ├── lib/                # Shared libraries
 │   ├── bootstrap.sh    # Load all libraries + OS detection
@@ -48,10 +49,16 @@ bash-utils/
 │   ├── log.sh          # Logging functions (log_info, log_warn, log_error, die)
 │   ├── os.sh           # OS-dependent command aliases (sed/date/etc)
 │   └── utils.sh        # Utility functions
+├── docs/               # Tool documentation
+│   ├── color-diff.md
+│   ├── generate-release-notes.md
+│   ├── github-create-issues.md
+│   └── slack-post.md
 ├── tests/              # Bats tests
 │   ├── test_helper.bash
 │   ├── color-diff.bats
 │   ├── generate-release-notes.bats
+│   ├── github-create-issues.bats
 │   ├── install.bats
 │   ├── lib_utils.bats
 │   ├── package.bats
@@ -96,11 +103,13 @@ All tools support standard `--help` and `--version` options:
 # Show help for any tool
 color-diff --help
 generate-release-notes --help
+github-create-issues --help
 slack-post --help
 
 # Show version
 color-diff --version
 generate-release-notes --version
+github-create-issues --version
 slack-post --version
 ```
 
@@ -150,6 +159,23 @@ slack-post --token "xoxb-your-token" --channel "C12345678" "Hello via API!"
 ```
 
 **[→ Full documentation](docs/slack-post.md)**
+
+#### [github-create-issues](docs/github-create-issues.md)
+
+Create multiple GitHub issues from JSON input with support for labels, assignees, milestones, and templates.
+
+```bash
+# Create issues from JSON file
+github-create-issues -i issues.json
+
+# With default labels and dry-run
+github-create-issues -i issues.json -l bug,priority-high --dry-run
+
+# From stdin
+echo '[{"title":"Bug fix","body":"Description"}]' | github-create-issues
+```
+
+**[→ Full documentation](docs/github-create-issues.md)**
 
 ## Development
 
