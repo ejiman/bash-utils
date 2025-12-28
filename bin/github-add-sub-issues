@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Resolve symlinks to get the actual script directory
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
+source "$LIB_DIR/bootstrap.sh"
+
+CLI_NAME="github-add-sub-issues"
+CLI_VERSION="0.1.0"
+CLI_DESCRIPTION="Add existing GitHub issues as sub-issues to a parent issue"
+CLI_USAGE="github-add-sub-issues [options] <parent-issue> <sub-issue>..."
+
+# ========= Argument definitions =========
+arg_flag VERBOSE -V --verbose "Enable verbose output"
+arg_flag REPLACE_PARENT -f --force "Replace existing parent if sub-issue already has one"
+arg_value REPO -R --repo "Repository in 'owner/repo' format (default: current repo)" "OWNER/REPO"
+
+# ========= Parse arguments =========
+parse_args "$@"
+
+# ========= Helper functions =========
+
+# Check if gh is installed and authenticated
+check_gh_cli() {
+  require_cmd gh
+
+  if ! gh auth status &> /dev/null; then
+    die "GitHub CLI is not authenticated. Please run 'gh auth login' first."
+  fi
+}
+
+# Get issue ID (not issue number)
+# Note: We use REST API to get the numeric 'id' field
+# GitHub CLI's --json doesn't support 'databaseId', so we use gh api directly
+get_issue_id() {
+  local issue_number="$1"
+  local repo_arg="${2:-}"
+
+  local endpoint
+  if [[ -n "$repo_arg" ]]; then
+    endpoint="repos/$repo_arg/issues/$issue_number"
+  else
+    # Get current repo
+    local owner_repo
+    owner_repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+    endpoint="repos/$owner_repo/issues/$issue_number"
+  fi
+
+  local issue_id
+  issue_id=$(gh api "$endpoint" --jq .id)
+
+  # Validate that we got a numeric ID
+  if [[ ! "$issue_id" =~ ^[0-9]+$ ]]; then
+    log_error "Failed to get valid issue ID for #$issue_number (got: '$issue_id')"
+    return 1
+  fi
+
+  echo "$issue_id"
+}
+
+# Check if issue exists
+issue_exists() {
+  local issue_number="$1"
+  local repo_arg="${2:-}"
+
+  local cmd=(gh issue view "$issue_number" --json number -q .number)
+  [[ -n "$repo_arg" ]] && cmd+=(--repo "$repo_arg")
+
+  if "${cmd[@]}" &> /dev/null; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Add sub-issue using GitHub API
+add_sub_issue() {
+  local parent_issue_number="$1"
+  local sub_issue_id="$2"
+  local repo_arg="${3:-}"
+  local replace_parent="${4:-false}"
+
+  local endpoint
+  if [[ -n "$repo_arg" ]]; then
+    endpoint="repos/$repo_arg/issues/$parent_issue_number/sub_issues"
+  else
+    # Use current repo
+    local owner_repo
+    owner_repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+    endpoint="repos/$owner_repo/issues/$parent_issue_number/sub_issues"
+  fi
+
+  # Build JSON request body using printf for safety
+  local request_body
+  if [[ "$replace_parent" == true ]]; then
+    request_body=$(printf '{"sub_issue_id": %s, "replace_parent": true}' "$sub_issue_id")
+  else
+    request_body=$(printf '{"sub_issue_id": %s}' "$sub_issue_id")
+  fi
+
+  # Verbose: show request body
+  [[ "${VERBOSE:-false}" == true ]] && log_info "Request body: $request_body"
+
+  # Use temporary files to avoid pipe/heredoc issues
+  local temp_body temp_error
+  temp_body=$(mktemp)
+  temp_error=$(mktemp)
+  echo "$request_body" > "$temp_body"
+
+  # Call API with pager disabled to prevent hanging
+  local api_result
+  if GH_PAGER=cat GH_NO_UPDATE_NOTIFIER=1 NO_COLOR=1 gh api \
+    -X POST \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "$endpoint" \
+    --input "$temp_body" > /dev/null 2> "$temp_error"; then
+    api_result=0
+  else
+    api_result=$?
+  fi
+
+  # Extract error message if available
+  local error_message=""
+  if [[ $api_result -ne 0 && -s "$temp_error" ]]; then
+    error_message=$(cat "$temp_error")
+  fi
+
+  # Clean up temp files
+  rm -f "$temp_body" "$temp_error"
+
+  # Return based on result
+  if [[ $api_result -eq 0 ]]; then
+    return 0
+  else
+    # Parse and display error message
+    if [[ -n "$error_message" ]]; then
+      local parsed_error
+      parsed_error=$(echo "$error_message" | grep -o '"message":"[^"]*"' | sed 's/"message":"\([^"]*\)"/\1/' | head -n1)
+      if [[ -n "$parsed_error" ]]; then
+        [[ "${VERBOSE:-false}" == true ]] && log_error "API error: $parsed_error"
+      fi
+    fi
+    return 1
+  fi
+}
+
+# ========= Main function =========
+main() {
+  # Check minimum arguments
+  if [[ ${#POSITIONAL[@]} -lt 2 ]]; then
+    die "At least two arguments required: parent issue number and one or more sub-issue numbers"
+  fi
+
+  # Check gh CLI
+  check_gh_cli
+
+  # Parse arguments
+  local parent_issue="${POSITIONAL[0]}"
+  local sub_issues=("${POSITIONAL[@]:1}")
+  local repo_arg="${REPO:-}"
+  local replace_parent="${REPLACE_PARENT:-false}"
+
+  [[ "${VERBOSE:-false}" == true ]] && log_info "Parent issue: #$parent_issue"
+  [[ "${VERBOSE:-false}" == true ]] && log_info "Sub-issues: ${sub_issues[*]}"
+
+  # Validate parent issue exists
+  if ! issue_exists "$parent_issue" "$repo_arg"; then
+    die "Parent issue #$parent_issue does not exist"
+  fi
+
+  # Validate all sub-issues exist and get their IDs
+  declare -A sub_issue_ids
+  for sub_issue in "${sub_issues[@]}"; do
+    if ! issue_exists "$sub_issue" "$repo_arg"; then
+      die "Sub-issue #$sub_issue does not exist"
+    fi
+
+    [[ "${VERBOSE:-false}" == true ]] && log_info "Fetching ID for issue #$sub_issue..."
+    local sub_issue_id
+    sub_issue_id=$(get_issue_id "$sub_issue" "$repo_arg")
+    sub_issue_ids[$sub_issue]=$sub_issue_id
+    [[ "${VERBOSE:-false}" == true ]] && log_info "Issue #$sub_issue has ID: $sub_issue_id"
+  done
+
+  # Add each sub-issue to the parent
+  local success_count=0
+  local failed_count=0
+
+  for sub_issue in "${sub_issues[@]}"; do
+    local sub_issue_id="${sub_issue_ids[$sub_issue]}"
+
+    log_info "Adding issue #$sub_issue as sub-issue to #$parent_issue..."
+
+    if add_sub_issue "$parent_issue" "$sub_issue_id" "$repo_arg" "$replace_parent"; then
+      ((success_count++)) || true
+      log_info "Successfully added #$sub_issue"
+    else
+      ((failed_count++)) || true
+      log_warn "Skipped #$sub_issue (may already be a sub-issue)"
+    fi
+  done
+
+  # Summary
+  if [[ $success_count -gt 0 ]]; then
+    log_info "Successfully added $success_count sub-issue(s) to #$parent_issue"
+  fi
+
+  if [[ $failed_count -gt 0 ]]; then
+    log_warn "$failed_count sub-issue(s) failed to add"
+    exit 1
+  fi
+
+  # Show URL
+  if [[ -n "$repo_arg" ]]; then
+    log_info "View at: https://github.com/$repo_arg/issues/$parent_issue"
+  else
+    local repo_info
+    repo_info=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+    log_info "View at: https://github.com/$repo_info/issues/$parent_issue"
+  fi
+}
+
+main

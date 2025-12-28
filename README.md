@@ -40,6 +40,7 @@ bash-utils/
 ├── bin/                # User-facing CLI tools (executable scripts)
 │   ├── color-diff
 │   ├── generate-release-notes
+│   ├── github-add-sub-issues
 │   ├── github-create-issues
 │   └── slack-post
 ├── lib/                # Shared libraries
@@ -52,12 +53,14 @@ bash-utils/
 ├── docs/               # Tool documentation
 │   ├── color-diff.md
 │   ├── generate-release-notes.md
+│   ├── github-add-sub-issues.md
 │   ├── github-create-issues.md
 │   └── slack-post.md
 ├── tests/              # Bats tests
 │   ├── test_helper.bash
 │   ├── color-diff.bats
 │   ├── generate-release-notes.bats
+│   ├── github-add-sub-issues.bats
 │   ├── github-create-issues.bats
 │   ├── install.bats
 │   ├── lib_utils.bats
@@ -103,12 +106,14 @@ All tools support standard `--help` and `--version` options:
 # Show help for any tool
 color-diff --help
 generate-release-notes --help
+github-add-sub-issues --help
 github-create-issues --help
 slack-post --help
 
 # Show version
 color-diff --version
 generate-release-notes --version
+github-add-sub-issues --version
 github-create-issues --version
 slack-post --version
 ```
@@ -176,6 +181,23 @@ echo '[{"title":"Bug fix","body":"Description"}]' | github-create-issues
 ```
 
 **[→ Full documentation](docs/github-create-issues.md)**
+
+#### [github-add-sub-issues](docs/github-add-sub-issues.md)
+
+Add existing GitHub issues as sub-issues to a parent issue using GitHub's native sub-issue feature.
+
+```bash
+# Add single sub-issue
+github-add-sub-issues 100 101
+
+# Add multiple sub-issues
+github-add-sub-issues 100 101 102 103
+
+# Specify repository
+github-add-sub-issues --repo owner/repo 100 101
+```
+
+**[→ Full documentation](docs/github-add-sub-issues.md)**
 
 ## Development
 
