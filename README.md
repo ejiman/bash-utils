@@ -42,6 +42,7 @@ bash-utils/
 │   ├── generate-release-notes
 │   ├── github-add-sub-issues
 │   ├── github-create-issues
+│   ├── github-get-project-info
 │   └── slack-post
 ├── lib/                # Shared libraries
 │   ├── bootstrap.sh    # Load all libraries + OS detection
@@ -55,6 +56,7 @@ bash-utils/
 │   ├── generate-release-notes.md
 │   ├── github-add-sub-issues.md
 │   ├── github-create-issues.md
+│   ├── github-get-project-info.md
 │   └── slack-post.md
 ├── tests/              # Bats tests
 │   ├── test_helper.bash
@@ -62,6 +64,7 @@ bash-utils/
 │   ├── generate-release-notes.bats
 │   ├── github-add-sub-issues.bats
 │   ├── github-create-issues.bats
+│   ├── github-get-project-info.bats
 │   ├── install.bats
 │   ├── lib_utils.bats
 │   ├── package.bats
@@ -108,6 +111,7 @@ color-diff --help
 generate-release-notes --help
 github-add-sub-issues --help
 github-create-issues --help
+github-get-project-info --help
 slack-post --help
 
 # Show version
@@ -115,6 +119,7 @@ color-diff --version
 generate-release-notes --version
 github-add-sub-issues --version
 github-create-issues --version
+github-get-project-info --version
 slack-post --version
 ```
 
@@ -201,6 +206,23 @@ github-add-sub-issues --repo owner/repo 100 101
 ```
 
 **[→ Full documentation](docs/github-add-sub-issues.md)**
+
+#### [github-get-project-info](docs/github-get-project-info.md)
+
+Get GitHub Project v2 information (project ID, item ID, field IDs) from an issue number. Useful for automating project board operations via GraphQL API.
+
+```bash
+# Get project info for issue #123 (auto-detects repo from git remote)
+github-get-project-info 123
+
+# Specify repository manually
+github-get-project-info --owner octocat --repo hello-world 42
+
+# JSON output for scripting
+github-get-project-info --format json 123 | jq -r '.data.repository.issue.projectItems.nodes[0].project.id'
+```
+
+**[→ Full documentation](docs/github-get-project-info.md)**
 
 ## Development
 
