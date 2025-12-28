@@ -1,0 +1,298 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ========= Bootstrap =========
+# Resolve symlinks to get the actual script directory
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+LIB_DIR="$(cd "$SCRIPT_DIR/../lib" && pwd)"
+source "$LIB_DIR/bootstrap.sh"
+
+# ========= CLI Information =========
+CLI_NAME="github-get-project-field-id"
+CLI_VERSION="0.1.0"
+CLI_DESCRIPTION="Get GitHub project field ID from field name"
+CLI_USAGE="github-get-project-field-id [options]
+
+Examples:
+  # Get all fields from a project by ID
+  github-get-project-field-id --project-id PVT_kwDOABCDEF
+
+  # Get all fields from a project by org and number
+  github-get-project-field-id --org myorg --number 1
+
+  # Filter by field name (partial match, case-insensitive)
+  github-get-project-field-id --org myorg --number 1 --field-name status
+
+  # Get only the field ID (useful for scripts)
+  github-get-project-field-id --org myorg --number 1 --field-name status --format id-only
+
+  # Output as JSON
+  github-get-project-field-id --project-id PVT_kwDOABCDEF --format json"
+
+# ========= Argument Definitions =========
+arg_flag VERBOSE -V --verbose "Enable verbose output"
+arg_value PROJECT_ID -p --project-id "Project node ID (e.g., PVT_kwDOABCDEF)" "ID"
+arg_value ORG -o --org "Organization name (requires --number)" "ORG"
+arg_value NUMBER -n --number "Project number (requires --org)" "NUM"
+arg_value FIELD_NAME -f --field-name "Filter by field name (case-insensitive partial match)" "NAME"
+arg_value FORMAT "" --format "Output format: table, json, id-only (default: table)" "FORMAT"
+
+# ========= Parse Arguments =========
+parse_args "$@"
+
+# ========= Validation =========
+validate_inputs() {
+  # Check if gh and jq commands are available
+  require_cmd gh
+  require_cmd jq
+
+  # Set default format
+  FORMAT="${FORMAT:-table}"
+
+  # Validate format
+  case "$FORMAT" in
+    table | json | id-only) ;;
+    *)
+      die "Invalid format: $FORMAT. Must be one of: table, json, id-only"
+      ;;
+  esac
+
+  # Validate input: either project-id OR (org AND number)
+  if [[ -n "${PROJECT_ID:-}" ]]; then
+    if [[ -n "${ORG:-}" ]] || [[ -n "${NUMBER:-}" ]]; then
+      die "Cannot specify both --project-id and --org/--number"
+    fi
+  else
+    if [[ -z "${ORG:-}" ]] || [[ -z "${NUMBER:-}" ]]; then
+      die "Must specify either --project-id or both --org and --number"
+    fi
+  fi
+}
+
+# ========= Fetch project fields using project ID =========
+fetch_fields_by_project_id() {
+  local project_id="$1"
+  [[ "${VERBOSE:-}" == "true" ]] && log_info "Fetching fields for project ID: $project_id"
+
+  local query
+  query=$(
+    cat << 'EOF'
+query($projectId: ID!) {
+  node(id: $projectId) {
+    ... on ProjectV2 {
+      id
+      title
+      fields(first: 100) {
+        nodes {
+          __typename
+          ... on ProjectV2FieldCommon {
+            id
+            name
+            dataType
+          }
+          ... on ProjectV2SingleSelectField {
+            id
+            name
+            dataType
+            options {
+              id
+              name
+            }
+          }
+          ... on ProjectV2IterationField {
+            id
+            name
+            dataType
+            configuration {
+              iterations {
+                id
+                title
+                startDate
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+EOF
+  )
+
+  gh api graphql -f query="$query" -f projectId="$project_id"
+}
+
+# ========= Fetch project fields using org and number =========
+fetch_fields_by_org_number() {
+  local org="$1"
+  local number="$2"
+  [[ "${VERBOSE:-}" == "true" ]] && log_info "Fetching fields for project: $org/$number"
+
+  local query
+  query=$(
+    cat << 'EOF'
+query($org: String!, $number: Int!) {
+  organization(login: $org) {
+    projectV2(number: $number) {
+      id
+      title
+      fields(first: 100) {
+        nodes {
+          __typename
+          ... on ProjectV2FieldCommon {
+            id
+            name
+            dataType
+          }
+          ... on ProjectV2SingleSelectField {
+            id
+            name
+            dataType
+            options {
+              id
+              name
+            }
+          }
+          ... on ProjectV2IterationField {
+            id
+            name
+            dataType
+            configuration {
+              iterations {
+                id
+                title
+                startDate
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+EOF
+  )
+
+  gh api graphql -f query="$query" -f org="$org" -F number="$number"
+}
+
+# ========= Process and filter fields =========
+process_fields() {
+  local raw_json="$1"
+  local field_name_filter="${FIELD_NAME:-}"
+
+  # Extract fields from response
+  local fields_json
+  if [[ -n "${PROJECT_ID:-}" ]]; then
+    fields_json=$(echo "$raw_json" | jq -r '.data.node.fields.nodes')
+  else
+    fields_json=$(echo "$raw_json" | jq -r '.data.organization.projectV2.fields.nodes')
+  fi
+
+  # Apply field name filter if specified
+  if [[ -n "$field_name_filter" ]]; then
+    [[ "${VERBOSE:-}" == "true" ]] && log_info "Filtering fields by name: $field_name_filter"
+    fields_json=$(echo "$fields_json" | jq --arg name "$field_name_filter" \
+      '[.[] | select(.name | ascii_downcase | contains($name | ascii_downcase))]')
+  fi
+
+  # Check if any fields found
+  local count
+  count=$(echo "$fields_json" | jq 'length')
+  if [[ "$count" -eq 0 ]]; then
+    if [[ -n "$field_name_filter" ]]; then
+      die "No fields found matching: $field_name_filter"
+    else
+      die "No fields found in project"
+    fi
+  fi
+
+  echo "$fields_json"
+}
+
+# ========= Output formatters =========
+format_table() {
+  local fields_json="$1"
+
+  echo "$fields_json" | jq -r '
+    ["FIELD_NAME", "FIELD_ID", "TYPE", "ADDITIONAL_INFO"],
+    ["----------", "--------", "----", "---------------"],
+    (.[] | [
+      .name,
+      .id,
+      .__typename,
+      (
+        if .__typename == "ProjectV2SingleSelectField" then
+          "Options: \((.options | length))"
+        elif .__typename == "ProjectV2IterationField" then
+          "Iterations: \((.configuration.iterations | length))"
+        else
+          "-"
+        end
+      )
+    ]) | @tsv
+  ' | column -t -s $'\t'
+}
+
+format_json() {
+  local fields_json="$1"
+  echo "$fields_json" | jq '.'
+}
+
+format_id_only() {
+  local fields_json="$1"
+  local field_name_filter="${FIELD_NAME:-}"
+
+  if [[ -n "$field_name_filter" ]]; then
+    # If filtering by name, output just the ID(s)
+    echo "$fields_json" | jq -r '.[].id'
+  else
+    # If not filtering, output name: id pairs
+    echo "$fields_json" | jq -r '.[] | "\(.name): \(.id)"'
+  fi
+}
+
+# ========= Main Function =========
+main() {
+  validate_inputs
+
+  # Fetch fields
+  local raw_json
+  if [[ -n "${PROJECT_ID:-}" ]]; then
+    raw_json=$(fetch_fields_by_project_id "$PROJECT_ID")
+  else
+    raw_json=$(fetch_fields_by_org_number "$ORG" "$NUMBER")
+  fi
+
+  # Check for GraphQL errors
+  if echo "$raw_json" | jq -e '.errors' > /dev/null 2>&1; then
+    local error_msg
+    error_msg=$(echo "$raw_json" | jq -r '.errors[0].message')
+    die "GraphQL error: $error_msg"
+  fi
+
+  # Process and filter fields
+  local fields_json
+  fields_json=$(process_fields "$raw_json")
+
+  # Output based on format
+  case "$FORMAT" in
+    table)
+      format_table "$fields_json"
+      ;;
+    json)
+      format_json "$fields_json"
+      ;;
+    id-only)
+      format_id_only "$fields_json"
+      ;;
+  esac
+}
+
+main

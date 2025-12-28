@@ -42,6 +42,7 @@ bash-utils/
 │   ├── generate-release-notes
 │   ├── github-add-sub-issues
 │   ├── github-create-issues
+│   ├── github-get-project-field-id
 │   ├── github-get-project-info
 │   └── slack-post
 ├── lib/                # Shared libraries
@@ -56,6 +57,7 @@ bash-utils/
 │   ├── generate-release-notes.md
 │   ├── github-add-sub-issues.md
 │   ├── github-create-issues.md
+│   ├── github-get-project-field-id.md
 │   ├── github-get-project-info.md
 │   └── slack-post.md
 ├── tests/              # Bats tests
@@ -64,6 +66,7 @@ bash-utils/
 │   ├── generate-release-notes.bats
 │   ├── github-add-sub-issues.bats
 │   ├── github-create-issues.bats
+│   ├── github-get-project-field-id.bats
 │   ├── github-get-project-info.bats
 │   ├── install.bats
 │   ├── lib_utils.bats
@@ -111,6 +114,7 @@ color-diff --help
 generate-release-notes --help
 github-add-sub-issues --help
 github-create-issues --help
+github-get-project-field-id --help
 github-get-project-info --help
 slack-post --help
 
@@ -119,6 +123,7 @@ color-diff --version
 generate-release-notes --version
 github-add-sub-issues --version
 github-create-issues --version
+github-get-project-field-id --version
 github-get-project-info --version
 slack-post --version
 ```
@@ -223,6 +228,23 @@ github-get-project-info --format json 123 | jq -r '.data.repository.issue.projec
 ```
 
 **[→ Full documentation](docs/github-get-project-info.md)**
+
+#### [github-get-project-field-id](docs/github-get-project-field-id.md)
+
+Get GitHub project field ID from field name. Retrieves field information from GitHub Projects V2 for use in automation workflows and scripts.
+
+```bash
+# Get all fields from a project
+github-get-project-field-id --org myorg --number 1
+
+# Filter by field name
+github-get-project-field-id --org myorg --number 1 --field-name status
+
+# Get only the field ID for scripting
+FIELD_ID=$(github-get-project-field-id --org myorg --number 1 --field-name status --format id-only)
+```
+
+**[→ Full documentation](docs/github-get-project-field-id.md)**
 
 ## Development
 
