@@ -106,9 +106,11 @@ slack-post --version
 
 ### Available Tools
 
-#### color-diff
+For detailed documentation, examples, and advanced usage, see the individual tool documentation:
 
-Show colorized diff between two files with optional JSON key sorting:
+#### [color-diff](docs/color-diff.md)
+
+Show colorized diff between two files with optional JSON key sorting.
 
 ```bash
 # Compare two files
@@ -116,22 +118,13 @@ color-diff file1.txt file2.txt
 
 # Compare JSON files with key sorting (requires jq)
 color-diff --json config1.json config2.json
-color-diff -j api-response1.json api-response2.json
-
-# Adjust context lines
-color-diff --context 5 file1.txt file2.txt
-color-diff -c 1 file1.txt file2.txt
 ```
 
-Features:
-- Automatic color output when supported by `diff` command
-- JSON mode sorts keys before comparison to ignore ordering differences
-- Configurable context lines (default: 3)
-- Exit code 0 for identical files, 1 for differences
+**[→ Full documentation](docs/color-diff.md)**
 
-#### generate-release-notes
+#### [generate-release-notes](docs/generate-release-notes.md)
 
-Generate release notes from git commits using conventional commit format:
+Generate release notes from git commits using conventional commit format.
 
 ```bash
 # Generate release notes from latest tag
@@ -139,26 +132,24 @@ generate-release-notes
 
 # Specify version range
 generate-release-notes --from v1.0.0 --to v2.0.0
-
-# Save to file
-generate-release-notes --output RELEASE_NOTES.md
 ```
 
-#### slack-post
+**[→ Full documentation](docs/generate-release-notes.md)**
 
-Post messages to Slack via Incoming Webhook or Web API:
+#### [slack-post](docs/slack-post.md)
+
+Post messages to Slack via Incoming Webhook or Web API.
 
 ```bash
 # Using Incoming Webhook
-slack-post --webhook "https://hooks.slack.com/services/T00/B00/XXX" "Hello, World!"
-
-# Using environment variables
 export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/T00/B00/XXX"
 slack-post "Hello from bash script!"
 
 # Using Bot Token
 slack-post --token "xoxb-your-token" --channel "C12345678" "Hello via API!"
 ```
+
+**[→ Full documentation](docs/slack-post.md)**
 
 ## Development
 
