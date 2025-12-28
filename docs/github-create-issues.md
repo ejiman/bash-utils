@@ -34,10 +34,69 @@ This tool is particularly useful for:
 - `-m, --milestone <number>` - Default milestone number
 - `-a, --assignees <users>` - Default assignees, comma-separated
 - `-r, --repo <owner/repo>` - Target repository (default: current repo)
+- `-f, --format <format>` - Output format: `simple` or `json` (default: `simple`)
 - `-n, --dry-run` - Show what would be created without actually creating
 - `-V, --verbose` - Enable verbose output
 - `-h, --help` - Show help message
 - `-v, --version` - Show version information
+
+## Output Formats
+
+The tool supports two output formats for displaying created issues:
+
+### Simple Format (Default)
+
+Human-readable format with issue numbers, titles, and URLs:
+
+```
+[INFO] Successfully created 3 issue(s)
+
+Created Issues:
+─────────────────────────────────────
+#123     Fix login bug
+          https://github.com/owner/repo/issues/123
+#124     Add new feature
+          https://github.com/owner/repo/issues/124
+#125     Update documentation
+          https://github.com/owner/repo/issues/125
+```
+
+### JSON Format
+
+Machine-readable JSON array format, perfect for parsing with `jq`:
+
+```json
+[
+  {
+    "number": 123,
+    "title": "Fix login bug",
+    "url": "https://github.com/owner/repo/issues/123"
+  },
+  {
+    "number": 124,
+    "title": "Add new feature",
+    "url": "https://github.com/owner/repo/issues/124"
+  },
+  {
+    "number": 125,
+    "title": "Update documentation",
+    "url": "https://github.com/owner/repo/issues/125"
+  }
+]
+```
+
+Extract specific fields:
+
+```bash
+# Get issue numbers only
+github-create-issues -i issues.json -f json | jq '.[].number'
+
+# Get URLs only
+github-create-issues -i issues.json -f json | jq -r '.[].url'
+
+# Get title and number
+github-create-issues -i issues.json -f json | jq -r '.[] | "#\(.number) - \(.title)"'
+```
 
 ## JSON Input Format
 
@@ -210,6 +269,75 @@ Shows additional information including the exact `gh` commands that would be exe
 
 ```bash
 github-create-issues -i issues.json -r owner/other-repo
+```
+
+### Using Output Formats
+
+#### Simple Format (Default)
+
+```bash
+github-create-issues -i issues.json
+# Or explicitly
+github-create-issues -i issues.json --format simple
+```
+
+Output:
+
+```text
+[INFO] Found 2 issue(s) to create
+[INFO] ✓ Created: #123 Fix login bug
+[INFO] ✓ Created: #124 Add new feature
+[INFO] Successfully created 2 issue(s)
+
+Created Issues:
+─────────────────────────────────────
+#123     Fix login bug
+          https://github.com/owner/repo/issues/123
+#124     Add new feature
+          https://github.com/owner/repo/issues/124
+```
+
+#### JSON Format
+
+```bash
+github-create-issues -i issues.json --format json
+```
+
+Output:
+
+```json
+[
+  {
+    "number": 123,
+    "title": "Fix login bug",
+    "url": "https://github.com/owner/repo/issues/123"
+  },
+  {
+    "number": 124,
+    "title": "Add new feature",
+    "url": "https://github.com/owner/repo/issues/124"
+  }
+]
+```
+
+#### Extracting Issue Information
+
+```bash
+# Save issue numbers to a file
+github-create-issues -i issues.json -f json | jq '.[].number' > issue_numbers.txt
+
+# Create issues and add to another system
+github-create-issues -i issues.json -f json | jq -r '.[] | "\(.number),\(.url)"' > issues.csv
+
+# Post-process created issues
+ISSUES=$(github-create-issues -i issues.json -f json)
+echo "$ISSUES" | jq -r '.[] | "Created issue #\(.number): \(.title)"'
+
+# Use in scripts
+for issue_url in $(github-create-issues -i issues.json -f json | jq -r '.[].url'); do
+  echo "Notify stakeholders about: $issue_url"
+  # send notification...
+done
 ```
 
 ## CI/CD Integration

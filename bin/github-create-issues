@@ -58,6 +58,7 @@ arg_value PROJECT -p --project "Add to GitHub project" "PROJECT"
 arg_value MILESTONE -m --milestone "Default milestone number" "NUMBER"
 arg_value ASSIGNEES -a --assignees "Default assignees (comma-separated)" "USERS"
 arg_value REPO -r --repo "Target repository (default: current repo)" "OWNER/REPO"
+arg_value FORMAT -f --format "Output format: simple, json (default: simple)" "FORMAT"
 arg_flag DRY_RUN -n --dry-run "Show what would be created without actually creating"
 arg_flag VERBOSE -V --verbose "Enable verbose output"
 
@@ -71,6 +72,15 @@ require_cmd jq
 # ========= Main Function =========
 main() {
   local json_input
+  local output_format="${FORMAT:-simple}"
+
+  # Validate format
+  if [[ "$output_format" != "simple" && "$output_format" != "json" ]]; then
+    die "Invalid format: $output_format. Use 'simple' or 'json'"
+  fi
+
+  # Array to store created issue results
+  declare -a CREATED_ISSUES=()
 
   # Read JSON input
   if [[ -n "${INPUT:-}" ]]; then
@@ -109,13 +119,14 @@ main() {
   # Process each issue
   local i
   for ((i = 0; i < issue_count; i++)); do
-    process_issue "$issues_json" "$i"
+    process_issue "$issues_json" "$i" "$output_format"
   done
 
   if [[ "${DRY_RUN:-}" == true ]]; then
     log_info "Dry run completed. No issues were created."
   else
-    log_info "Successfully created $issue_count issue(s)"
+    # Output results in specified format
+    output_results "$output_format" "${CREATED_ISSUES[@]}"
   fi
 }
 
@@ -123,6 +134,7 @@ main() {
 process_issue() {
   local issues_json="$1"
   local index="$2"
+  local output_format="$3"
 
   local issue
   issue=$(echo "$issues_json" | jq -r ".[$index]")
@@ -215,12 +227,71 @@ process_issue() {
     return 0
   else
     [[ "${VERBOSE:-}" == true ]] && log_info "Creating issue: $title"
-    if gh issue create "${cmd_args[@]}"; then
-      log_info "✓ Created: $title"
+    local issue_url
+    if issue_url=$(gh issue create "${cmd_args[@]}" 2>&1); then
+      # Extract issue number from URL (e.g., https://github.com/owner/repo/issues/123)
+      local issue_number
+      issue_number=$(echo "$issue_url" | grep -oE '[0-9]+$')
+
+      # Store result for later output
+      CREATED_ISSUES+=("$issue_number|$title|$issue_url")
+
+      if [[ "$output_format" == "simple" ]]; then
+        log_info "✓ Created: #$issue_number $title"
+      fi
     else
       log_error "✗ Failed to create: $title"
+      log_error "Error: $issue_url"
       exit 1
     fi
+  fi
+}
+
+# ========= Output Results =========
+output_results() {
+  local format="$1"
+  shift
+  local results=("$@")
+
+  if [[ ${#results[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  if [[ "$format" == "json" ]]; then
+    # Build JSON array
+    local json_output="["
+    local first=true
+
+    for result in "${results[@]}"; do
+      IFS='|' read -r number title url <<< "$result"
+
+      if [[ "$first" == true ]]; then
+        first=false
+      else
+        json_output+=","
+      fi
+
+      # Escape JSON strings (remove trailing newline from jq -R -s)
+      title=$(echo -n "$title" | jq -R -s '.')
+      url=$(echo -n "$url" | jq -R -s '.')
+
+      json_output+="{\"number\":$number,\"title\":$title,\"url\":$url}"
+    done
+
+    json_output+="]"
+    echo "$json_output" | jq '.'
+  else
+    # Simple format
+    log_info "Successfully created ${#results[@]} issue(s)"
+    echo ""
+    echo "Created Issues:"
+    echo "─────────────────────────────────────"
+
+    for result in "${results[@]}"; do
+      IFS='|' read -r number title url <<< "$result"
+      printf "#%-6s  %s\n" "$number" "$title"
+      echo "          $url"
+    done
   fi
 }
 

@@ -167,7 +167,7 @@ slack-post --token "xoxb-your-token" --channel "C12345678" "Hello via API!"
 
 #### [github-create-issues](docs/github-create-issues.md)
 
-Create multiple GitHub issues from JSON input with support for labels, assignees, milestones, and templates.
+Create multiple GitHub issues from JSON input with support for labels, assignees, milestones, and templates. Supports both human-readable and JSON output formats for easy parsing.
 
 ```bash
 # Create issues from JSON file
@@ -178,6 +178,9 @@ github-create-issues -i issues.json -l bug,priority-high --dry-run
 
 # From stdin
 echo '[{"title":"Bug fix","body":"Description"}]' | github-create-issues
+
+# JSON output for parsing with jq
+github-create-issues -i issues.json --format json | jq '.[].number'
 ```
 
 **[→ Full documentation](docs/github-create-issues.md)**

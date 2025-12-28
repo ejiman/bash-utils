@@ -214,3 +214,42 @@ teardown() {
   assert_output_contains "Body:"
   assert_output_contains "..."
 }
+
+# ========= Output Format Tests =========
+
+@test "github-create-issues: --help shows --format option" {
+  run "${BIN_DIR}/github-create-issues" --help
+  assert_success
+  assert_output_contains "--format"
+  assert_output_contains "Output format"
+}
+
+@test "github-create-issues: rejects invalid format" {
+  run bash -c "echo '{\"title\":\"Test\"}' | '${BIN_DIR}/github-create-issues' --format invalid --dry-run"
+  assert_failure
+  assert_output_contains "Invalid format"
+}
+
+@test "github-create-issues: accepts --format simple" {
+  run bash -c "echo '{\"title\":\"Test\"}' | '${BIN_DIR}/github-create-issues' --format simple --dry-run"
+  assert_success
+  assert_output_contains "Would create issue"
+}
+
+@test "github-create-issues: accepts --format json" {
+  run bash -c "echo '{\"title\":\"Test\"}' | '${BIN_DIR}/github-create-issues' --format json --dry-run"
+  assert_success
+  assert_output_contains "Would create issue"
+}
+
+@test "github-create-issues: short option -f works with simple" {
+  run bash -c "echo '{\"title\":\"Test\"}' | '${BIN_DIR}/github-create-issues' -f simple --dry-run"
+  assert_success
+  assert_output_contains "Would create issue"
+}
+
+@test "github-create-issues: short option -f works with json" {
+  run bash -c "echo '{\"title\":\"Test\"}' | '${BIN_DIR}/github-create-issues' -f json --dry-run"
+  assert_success
+  assert_output_contains "Would create issue"
+}
